@@ -46,9 +46,7 @@ void loop() {
   float levelX = accelerometerMeassure(0);
   float levelY = accelerometerMeassure(1);
   
-  if(levelY > 0.5) {
-    setMotorsSpeed(255, motorTwoSpeed, motorThreeSpeed, motorFourSpeed);
-  }
+  setMotorsSpeed(levelY, motorTwoSpeed, motorThreeSpeed, motorFourSpeed);
 
   Serial.print(levelX);
   Serial.print(" ");
@@ -56,8 +54,14 @@ void loop() {
   delay(200);
 }
 
-void setMotorsSpeed(int motorOne, int motorTwo, int motorThree, int motorFour) {
-    analogWrite(motorPin1, motorOne); // send mSpeed value to motor
+void setMotorsSpeed(float motorOne, int motorTwo, int motorThree, int motorFour) {
+    float speed = motorOne * 255;
+    Serial.print(" speed");
+    Serial.println(speed);
+    if(speed > 50) {
+      analogWrite(motorPin1, (motorOne * 2.55) * 100); // send mSpeed value to motor
+    }  
+    
     analogWrite(motorPin2, motorTwo);
     
     motorOneSpeed = motorOne;
