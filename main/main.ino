@@ -8,10 +8,10 @@ RF24 radio(7, 8);
 const byte address[6] = "00001";
 
 const int MPU = 0x68; // accelerometer address 
-int motorPin1 = 10;// pin to connect to motor module
-int motorPin2 = 9;// pin to connect to motor module
-int mSpeed = 0;// variable to hold speed value
-int mStep = 15;// increment/decrement step for PWM motor speed
+int motorPin1 = 2;  // pin to connect to motor module
+int motorPin2 = 2;  // pin to connect to motor module
+int mSpeed = 0;  // variable to hold speed value
+int mStep = 15;  // increment/decrement step for PWM motor speed
 int motorOneSpeed = 0;
 int motorTwoSpeed = 0;
 int motorThreeSpeed = 0;
@@ -53,7 +53,7 @@ void loop() {
   if(radio.available()) {
     char text[32] = "";
     radio.read(&text, sizeof(text));
-    Serial.println(text);
+    //Serial.println(text);
   }
 
   if(firstStart) {
@@ -66,9 +66,6 @@ void loop() {
   
   setMotorsSpeed(levelY, motorTwoSpeed, motorThreeSpeed, motorFourSpeed);
 
-  //Serial.print(levelX);
-  //Serial.print(" ");
-  //Serial.println(levelY);
   delay(200);
 }
 
@@ -110,19 +107,21 @@ float accelerometerMeassure(int axis) {
 
   // visualize accerleration
 
-  //Serial.print(AccX / 2048);
-  //Serial.print(" ");
-  //Serial.print(AccY / 2048);
-  //Serial.print(" ");
-  //Serial.print(AccZ / 2048);
-  //Serial.print(" ");
+  // Serial.print(AccX / 2048);
+  // Serial.print(" ");
+  // Serial.print(AccY / 2048);
+  // Serial.print(" ");
+  // Serial.print(AccZ / 2048);
+  // Serial.print(" ");
 
   // convert data to angle
   double pitch = atan(AccX/AccZ);
   double roll = atan(AccY/AccZ);
-  //Serial.print(pitch);
-  //Serial.print(" ");
-  //Serial.println(roll);
+  
+  Serial.print(pitch);
+  Serial.print(" ");
+  Serial.println(roll);
+  
   if(axis == 0) {
     return pitch;
   } else if(axis == 1) {
