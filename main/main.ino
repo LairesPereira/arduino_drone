@@ -1,31 +1,44 @@
+#include <Servo.h>//Using servo library to control esc1
 #include <Wire.h>
 #include <SPI.h>
 #include <nRF24L01.h>
 #include <RF24.h>
 
-// radio config
-RF24 radio(7, 8);
+RF24 radio(7, 8); // create a radio class 
+
+Servo esc1; // Creating a servo class with name as esc1
+Servo esc2;
+Servo esc3;
+Servo esc4;
+
 const byte address[6] = "00001";
 
 const int MPU = 0x68; // accelerometer address 
-int motorPin1 = 2;  // pin to connect to motor module
-int motorPin2 = 2;  // pin to connect to motor module
-int mSpeed = 0;  // variable to hold speed value
-int mStep = 15;  // increment/decrement step for PWM motor speed
-int motorOneSpeed = 0;
-int motorTwoSpeed = 0;
-int motorThreeSpeed = 0;
-int motorFourSpeed = 0;
+
+// motors config
+// motors power pins
+int motorPin1 = 5;  // pin to connect to motor module
+int motorPin2 = 6;  // pin to connect to motor module
+int motorPin3 = 9;  // pin to connect to motor module
+
+// save last speed value
+int motorOneLastSpeed = 0;
+
+bool motorsRunning = false;
+
 
 float AccX, AccY, AccZ, Temp;
-bool firstStart = true;
-
 
 void setup() {
-  // Robojax.com demo
+  Serial.begin(9600);// initialize serial motor  
+
   pinMode(motorPin1, OUTPUT);// set mtorPin as output
   pinMode(motorPin2, OUTPUT);// set mtorPin as output
-  Serial.begin(9600);// initialize serial motor  
+  pinMode(motorPin3, OUTPUT);// set mtorPin as output
+
+  esc1.attach(motorPin1); //Specify the esc1 signal pin
+  esc2.attach(motorPin2); //Specify the esc1 signal pin
+  esc3.attach(motorPin3); //Specify the esc1 signal pin
 
   // radio initializer
   radio.begin();
@@ -49,44 +62,55 @@ void setup() {
 }
 
 void loop() {
-
   if(radio.available()) {
-    char text[32] = "";
-    radio.read(&text, sizeof(text));
-    //Serial.println(text);
+    char controllerIntruction[32] = "";
+    int potentiometerRecivedValue;
+    radio.read(&controllerIntruction, sizeof(controllerIntruction));
+    Serial.println(controllerIntruction);
+    
+    if(strcmp(controllerIntruction, "switch_motors_power") == 0) {
+      startStop();
+    }
+    if(strcmp(controllerIntruction, "speed_up") == 0) {
+      radio.read(&potentiometerRecivedValue, sizeof(potentiometerRecivedValue));
+      Serial.println(potentiometerRecivedValue);
+      if(potentiometerRecivedValue >= 0 && potentiometerRecivedValue <= 180){
+        setMotorsSpeed(potentiometerRecivedValue, potentiometerRecivedValue, potentiometerRecivedValue, potentiometerRecivedValue); // increses motors speed
+      }
+    }
   }
-
-  if(firstStart) {
-    startMotors(10, 10, 10, 10);
-    firstStart = false;
-  } 
-
-  float levelX = accelerometerMeassure(0);
-  float levelY = accelerometerMeassure(1);
-  
-  setMotorsSpeed(levelY, motorTwoSpeed, motorThreeSpeed, motorFourSpeed);
-
   delay(200);
+
+  //float levelX = accelerometerMeassure(0);
+  //float levelY = accelerometerMeassure(1);
+  
+  // setMotorsSpeed(levelY, motorTwoSpeed, motorThreeSpeed, motorFourSpeed);
+}
+
+void startStop(){
+  if(!motorsRunning) {
+    setMotorsSpeed(10, 10, 10, 10);
+    motorsRunning = true;
+    delay(1000);
+  } else {
+    setMotorsSpeed(0, 0, 0, 0);
+    motorsRunning = false;
+    delay(1000);
+  }
 }
 
 void setMotorsSpeed(float motorOne, int motorTwo, int motorThree, int motorFour) {
-    float speed = motorOne * 255;
-    
-    if(speed > 50) {
-      analogWrite(motorPin1, (motorOne * 2.55) * 100); // send mSpeed value to motor
-    }  
-    
-    analogWrite(motorPin2, motorTwo);
-    
-    motorOneSpeed = motorOne;
-    motorTwoSpeed = motorTwo;
+    // CREATE METHOD FOR SLOWLY INCREASES SPEED FOR AVOID BUMPS
+    esc1.write(motorOne); //using val as the signal to esc1
+    esc2.write(motorOne);
+    esc3.write(motorOne);
 }
 
 void startMotors(int motorOne, int motorTwo, int motorThree, int motorFour) {
     // Serial.println(mSpeed); // print mSpeed value on Serial monitor (click on Tools->Serial Monitor)
     // starts always at low speed
-    analogWrite(motorPin1, motorOne); // send mSpeed value to motor
-    analogWrite(motorPin2, motorTwo); 
+    esc1.write(motorOne); 
+     
 }
 
 float accelerometerMeassure(int axis) {
@@ -118,9 +142,9 @@ float accelerometerMeassure(int axis) {
   double pitch = atan(AccX/AccZ);
   double roll = atan(AccY/AccZ);
   
-  Serial.print(pitch);
-  Serial.print(" ");
-  Serial.println(roll);
+  //Serial.print(pitch);
+  //Serial.print(" ");
+  //Serial.println(roll);
   
   if(axis == 0) {
     return pitch;

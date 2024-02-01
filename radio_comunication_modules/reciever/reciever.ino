@@ -12,6 +12,8 @@ int motorPin1 = 10;// pin to connect to motor module
 int motorPin2 = 9;// pin to connect to motor module
 int mSpeed = 0;// variable to hold speed value
 int mStep = 15;// increment/decrement step for PWM motor speed
+
+bool motorsPower = false;
 int motorOneSpeed = 0;
 int motorTwoSpeed = 0;
 int motorThreeSpeed = 0;
@@ -49,11 +51,18 @@ void setup() {
 }
 
 void loop() {
-
+  // read information from radio 
   if(radio.available()) {
-    char text[32] = "";
-    radio.read(&text, sizeof(text));
-    Serial.println(text);
+    char lastInstruction[32] = "";
+    radio.read(&lastInstruction, sizeof(lastInstruction));
+
+    // turn motors on and off 
+    if(strcmp(lastInstruction, "switch_motors_power") == 0) {
+      Serial.println(lastInstruction);
+    }
+
+    strcpy(lastInstruction, ""); // clear last instruction
+    
   }
 
   if(firstStart) {
