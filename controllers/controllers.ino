@@ -7,7 +7,7 @@ const byte address[6] = "00001";
 int switchMotorsPower = 0;
 
 // declare push buttons pins
-static const int startButton = 3;
+static const int startButton = 2;
 static const int speedUpBtn = 4;                    // switch pin
 int buttonStatePrevious = LOW;                      // previousstate of the switch
 int potentiometer = A0; //Assign to pin A0
@@ -31,21 +31,15 @@ int startBtnLastState = 0;
 int speedUpBtnState = 0;
 int speedUpBtnLastState = 0;
 
-// potentiometer variables
-int responsivePotReading = 0;
-int potentiometerValueRead = 0;
-int lastPotentiometerValueRead = 0;
-int potentiometerThreshold = 1;
-float snapMultiplier = 0.01;
+// joystick config
+int eixo_X_speed = A3; //PINO REFERENTE A LIGAÇÃO DO EIXO X DO PINO DE VELOCIDADE GERAL DOS MOTORES
+int eixo_X= A1; //PINO REFERENTE A LIGAÇÃO DO EIXO X
+int eixo_Y = A2; //PINO REFERENTE A LIGAÇÃO DO EIXO Y
 
 RF24 radio(7, 8);
-ResponsiveAnalogRead responsivePot(potentiometer, true, snapMultiplier);
 
 void setup() {
   Serial.begin(9600);
-
-  responsivePot.setAnalogResolution(180);
-
   pinMode(potentiometer, INPUT); //Sets the pinmode to input
   pinMode(startButton, INPUT);
   pinMode(speedUpBtn, INPUT);
@@ -56,27 +50,40 @@ void setup() {
 }
 
 void loop() {
-
-    responsivePotReading = analogRead(potentiometer);
-    responsivePot.update(responsivePotReading);
-    int responsivePotValue = responsivePot.getValue();
-
+    readJoystick();
     currentMillis = millis();    // store the current time
     startBtnState = digitalRead(startButton);
     speedUpBtnState = digitalRead(speedUpBtn);
 
-    if(responsivePotValue >= lastPotentiometerValueRead + potentiometerThreshold ||
-       responsivePotValue <= lastPotentiometerValueRead - potentiometerThreshold) {
-      Serial.print("Potentiometer value: ");
-      if(potentiometerValueRead < 5) {
-        Serial.println( responsivePotValue ); //Print the value in the serial monitor
-        speedUp(responsivePotValue);
-        lastPotentiometerValueRead = responsivePotValue;
-        responsivePotValue = 0;
-      }
       
+}
+
+void readJoystick() {
+    if(analogRead(eixo_X_speed) == 0) {
+      sendSpeed("UP"); 
+    } else if(analogRead(eixo_X_speed) == 1023) {
+      sendSpeed("DOWN");
     }
-      
+
+    if((analogRead(eixo_X)) == 0){ //SE LEITURA FOR IGUAL A 0, FAZ
+        while(analogRead(eixo_X) == 0) {
+        sendDirection("UP");
+        delay(500);
+        }
+    }else{
+          if((analogRead(eixo_X)) == 1023){ //SE LEITURA FOR IGUAL A 1023, FAZ
+              sendDirection("DOWN");
+          }else{
+                if((analogRead(eixo_Y)) == 0){ //SE LEITURA FOR IGUAL A 0, FAZ
+                  sendDirection("RIGHT");
+                }else{
+                      if((analogRead(eixo_Y)) == 1023){ //SE LEITURA FOR IGUAL A 1023, FAZ
+                          sendDirection("LEFT");
+                      }
+                }
+          }
+    }
+    delay(100); //INTERVALO DE 500 MILISSEGUNDOS
 }
 
 void start() {
@@ -85,10 +92,41 @@ void start() {
     startBtnState = startBtnLastState;
 }
 
-void speedUp(int potentiometerValue) {
-    const char text[] = "speed_up";
-    radio.write(&text, sizeof(text));
-    radio.write(&potentiometerValue, sizeof(potentiometerValue));
-    speedUpBtnState = speedUpBtnLastState;
-   
+void sendSpeed(String speedDirection) {
+  const char instruction[] = "GENERAL_SPEED";
+  if(speedDirection == "UP") {
+    const char direction[] = "UP";
+    radio.write(&instruction, sizeof(instruction));
+    radio.write(&direction, sizeof(direction));
+  } else if(speedDirection == "DOWN") {
+    const char direction[] = "DOWN";
+    radio.write(&instruction, sizeof(instruction));
+    radio.write(&direction, sizeof(direction));
+  } 
+}
+
+void sendDirection(String joystickInstruction) {
+    const char instruction[] = "DIRETCTION";
+
+    if(joystickInstruction == "UP"){
+      const char direction[] = "UP";
+      radio.write(&instruction, sizeof(instruction));
+      radio.write(&direction, sizeof(direction));
+    } else if (joystickInstruction == "DOWN") {
+      const char direction[] = "DOWN";
+      radio.write(&instruction, sizeof(instruction));
+      radio.write(&direction, sizeof(direction));
+    } else if (joystickInstruction == "LEFT") {
+      const char direction[] = "LEFT";
+      radio.write(&instruction, sizeof(instruction));
+      radio.write(&direction, sizeof(direction));
+    } else if (joystickInstruction == "RIGHT") {
+      const char direction[] = "RIGHT";
+      radio.write(&instruction, sizeof(instruction));
+      radio.write(&direction, sizeof(direction));
+    }
+
+    String direction = joystickInstruction;
+    Serial.println(joystickInstruction);
+    Serial.println(instruction);
 }

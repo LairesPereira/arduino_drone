@@ -20,12 +20,16 @@ const int MPU = 0x68; // accelerometer address
 int motorPin1 = 5;  // pin to connect to motor module
 int motorPin2 = 6;  // pin to connect to motor module
 int motorPin3 = 9;  // pin to connect to motor module
+int motorPin4 = 10;  // pin to connect to motor module
 
 // save last speed value
-int motorOneLastSpeed = 0;
+int lastMotorOneSpeed = 0;
+int lastMotorTwoSpeed = 0;
+int lastMotorThreeSpeed = 0;
+int lastMotorFourSpeed = 0;
+
 
 bool motorsRunning = false;
-
 
 float AccX, AccY, AccZ, Temp;
 
@@ -35,10 +39,15 @@ void setup() {
   pinMode(motorPin1, OUTPUT);// set mtorPin as output
   pinMode(motorPin2, OUTPUT);// set mtorPin as output
   pinMode(motorPin3, OUTPUT);// set mtorPin as output
+  pinMode(motorPin4, OUTPUT);// set mtorPin as output
 
   esc1.attach(motorPin1); //Specify the esc1 signal pin
   esc2.attach(motorPin2); //Specify the esc1 signal pin
   esc3.attach(motorPin3); //Specify the esc1 signal pin
+  esc4.attach(motorPin4); //Specify the esc1 signal pin
+
+  esc1.write(0); //using val as the signal to esc1
+  delay(1000);
 
   // radio initializer
   radio.begin();
@@ -62,24 +71,35 @@ void setup() {
 }
 
 void loop() {
+  Serial.println(lastMotorOneSpeed);
+  esc1.write(lastMotorOneSpeed); //using val as the signal to esc1
+  
+
   if(radio.available()) {
-    char controllerIntruction[32] = "";
-    int potentiometerRecivedValue;
-    radio.read(&controllerIntruction, sizeof(controllerIntruction));
-    Serial.println(controllerIntruction);
+    char controllerInstruction[32] = "";
+    char directionInstruction[32] = "";
+    radio.read(&controllerInstruction, sizeof(controllerInstruction));
+    radio.read(&directionInstruction, sizeof(directionInstruction));
+    Serial.println(controllerInstruction);
+    Serial.println(directionInstruction);    
     
-    if(strcmp(controllerIntruction, "switch_motors_power") == 0) {
-      startStop();
+    if(strcmp(controllerInstruction, "switch_motors_power") == 0) {
+      //startStop();
     }
-    if(strcmp(controllerIntruction, "speed_up") == 0) {
-      radio.read(&potentiometerRecivedValue, sizeof(potentiometerRecivedValue));
-      Serial.println(potentiometerRecivedValue);
-      if(potentiometerRecivedValue >= 0 && potentiometerRecivedValue <= 180){
-        setMotorsSpeed(potentiometerRecivedValue, potentiometerRecivedValue, potentiometerRecivedValue, potentiometerRecivedValue); // increses motors speed
+    
+    if(strcmp(controllerInstruction, "GENERAL_SPEED") == 0) {
+      if(strcmp(directionInstruction, "UP") == 0) {
+        setGeneralSpeed(1,1,1,1);
+        delay(200);
+      }
+
+    } else if(strcmp(controllerInstruction, "DIRECTION") == 0) {
+      if(strcmp(directionInstruction, "UP") == 0){
+        motorsRunning = true;
+        setMotorsSpeedUp(1,1,1,1); // increses motors speed
       }
     }
   }
-  delay(200);
 
   //float levelX = accelerometerMeassure(0);
   //float levelY = accelerometerMeassure(1);
@@ -87,23 +107,38 @@ void loop() {
   // setMotorsSpeed(levelY, motorTwoSpeed, motorThreeSpeed, motorFourSpeed);
 }
 
-void startStop(){
-  if(!motorsRunning) {
-    setMotorsSpeed(10, 10, 10, 10);
-    motorsRunning = true;
-    delay(1000);
-  } else {
-    setMotorsSpeed(0, 0, 0, 0);
-    motorsRunning = false;
-    delay(1000);
-  }
+//void startStop(){
+  //if(!motorsRunning) {
+    //setMotorsSpeed(10, 10, 10, 10);
+    //motorsRunning = true;
+    //delay(1000);
+  //} else {
+    //setMotorsSpeed(0, 0, 0, 0);
+    //motorsRunning = false;
+    //delay(1000);
+ // }
+//}
+
+void setGeneralSpeed(int motorOne, int motorTwo, int motorThree, int motorFour) {
+    Serial.println("aqui");
+    //esc1.write(lastMotorOneSpeed + motorOne); //using val as the signal to esc1
+    esc2.write(lastMotorTwoSpeed + motorTwo);
+    esc3.write(lastMotorThreeSpeed + motorThree);
+    esc4.write(lastMotorFourSpeed + motorFour);
+
+    lastMotorOneSpeed = lastMotorOneSpeed + motorOne;
+    lastMotorTwoSpeed = lastMotorTwoSpeed + motorTwo;
+    lastMotorThreeSpeed = lastMotorThreeSpeed + motorThree;
+    lastMotorFourSpeed = lastMotorFourSpeed + motorFour;
 }
 
-void setMotorsSpeed(float motorOne, int motorTwo, int motorThree, int motorFour) {
+void setMotorsSpeedUp(float motorOne, int motorTwo, int motorThree, int motorFour) {
     // CREATE METHOD FOR SLOWLY INCREASES SPEED FOR AVOID BUMPS
     esc1.write(motorOne); //using val as the signal to esc1
     esc2.write(motorOne);
     esc3.write(motorOne);
+    esc4.write(motorOne);
+
 }
 
 void startMotors(int motorOne, int motorTwo, int motorThree, int motorFour) {
