@@ -46,8 +46,15 @@ void setup() {
   esc3.attach(motorPin3); //Specify the esc1 signal pin
   esc4.attach(motorPin4); //Specify the esc1 signal pin
 
-  esc1.write(0); //using val as the signal to esc1
+  // set all motors speed to zero
+  esc1.write(0);
+  esc2.write(0);
+  esc3.write(0);
+  esc4.write(0);
+
   delay(1000);
+
+  setMinimalStartSpeed(); // set all speeds to minimal value 35
 
   // radio initializer
   radio.begin();
@@ -71,9 +78,13 @@ void setup() {
 }
 
 void loop() {
-  Serial.println(lastMotorOneSpeed);
-  esc1.write(lastMotorOneSpeed); //using val as the signal to esc1
+  Serial.print(lastMotorOneSpeed);
   
+  Serial.println();
+
+  Serial.print(lastMotorTwoSpeed);
+ 
+  Serial.println();
 
   if(radio.available()) {
     char controllerInstruction[32] = "";
@@ -89,7 +100,10 @@ void loop() {
     
     if(strcmp(controllerInstruction, "GENERAL_SPEED") == 0) {
       if(strcmp(directionInstruction, "UP") == 0) {
-        setGeneralSpeed(1,1,1,1);
+        setGeneralSpeed(1,1,1,1, "UP");
+        delay(200);
+      } else if(strcmp(directionInstruction, "DOWN") == 0) {
+        setGeneralSpeed(1,1,1,1, "DOWN");
         delay(200);
       }
 
@@ -119,17 +133,34 @@ void loop() {
  // }
 //}
 
-void setGeneralSpeed(int motorOne, int motorTwo, int motorThree, int motorFour) {
-    Serial.println("aqui");
-    //esc1.write(lastMotorOneSpeed + motorOne); //using val as the signal to esc1
-    esc2.write(lastMotorTwoSpeed + motorTwo);
-    esc3.write(lastMotorThreeSpeed + motorThree);
-    esc4.write(lastMotorFourSpeed + motorFour);
+void setGeneralSpeed(int motorOne, int motorTwo, int motorThree, int motorFour, String direction) {
+    if(direction == "UP") {
+      esc1.write(lastMotorOneSpeed + motorOne);
+      esc2.write(lastMotorTwoSpeed + motorTwo);
+      esc3.write(lastMotorThreeSpeed + motorThree);
+      esc4.write(lastMotorFourSpeed + motorFour);
 
-    lastMotorOneSpeed = lastMotorOneSpeed + motorOne;
-    lastMotorTwoSpeed = lastMotorTwoSpeed + motorTwo;
-    lastMotorThreeSpeed = lastMotorThreeSpeed + motorThree;
-    lastMotorFourSpeed = lastMotorFourSpeed + motorFour;
+      lastMotorOneSpeed = lastMotorOneSpeed + motorOne;
+      lastMotorTwoSpeed = lastMotorTwoSpeed + motorTwo;
+      lastMotorThreeSpeed = lastMotorThreeSpeed + motorThree;
+      lastMotorFourSpeed = lastMotorFourSpeed + motorFour;
+
+    } else if(direction == "DOWN" &&
+              lastMotorOneSpeed > 0 &&
+              lastMotorTwoSpeed > 0 &&
+              lastMotorThreeSpeed > 0 &&
+              lastMotorFourSpeed > 0
+    ) {
+      esc1.write(lastMotorOneSpeed - motorOne);
+      esc2.write(lastMotorTwoSpeed - motorTwo);
+      esc3.write(lastMotorThreeSpeed - motorThree);
+      esc4.write(lastMotorFourSpeed - motorFour);
+
+      lastMotorOneSpeed = lastMotorOneSpeed - motorOne;
+      lastMotorTwoSpeed = lastMotorTwoSpeed - motorTwo;
+      lastMotorThreeSpeed = lastMotorThreeSpeed - motorThree;
+      lastMotorFourSpeed = lastMotorFourSpeed - motorFour;
+    }
 }
 
 void setMotorsSpeedUp(float motorOne, int motorTwo, int motorThree, int motorFour) {
@@ -138,15 +169,26 @@ void setMotorsSpeedUp(float motorOne, int motorTwo, int motorThree, int motorFou
     esc2.write(motorOne);
     esc3.write(motorOne);
     esc4.write(motorOne);
+}
 
+void setMinimalStartSpeed() {
+  esc1.write(40);
+  esc2.write(40);
+  esc3.write(40);
+  esc4.write(40);
+
+  lastMotorOneSpeed = 40;
+  lastMotorTwoSpeed = 40;
+  lastMotorThreeSpeed = 40;
+  lastMotorFourSpeed = 40;
 }
 
 void startMotors(int motorOne, int motorTwo, int motorThree, int motorFour) {
     // Serial.println(mSpeed); // print mSpeed value on Serial monitor (click on Tools->Serial Monitor)
     // starts always at low speed
     esc1.write(motorOne); 
-     
 }
+
 
 float accelerometerMeassure(int axis) {
   // axis X = 0 

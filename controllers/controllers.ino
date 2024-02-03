@@ -53,16 +53,20 @@ void loop() {
     readJoystick();
     currentMillis = millis();    // store the current time
     startBtnState = digitalRead(startButton);
-    speedUpBtnState = digitalRead(speedUpBtn);
-
-      
+    speedUpBtnState = digitalRead(speedUpBtn);      
 }
 
 void readJoystick() {
     if(analogRead(eixo_X_speed) == 0) {
-      sendSpeed("UP"); 
+      while(analogRead(eixo_X_speed) == 0) {
+        sendSpeed("UP");
+        delay(200);
+      } 
     } else if(analogRead(eixo_X_speed) == 1023) {
-      sendSpeed("DOWN");
+      while(analogRead(eixo_X_speed) == 1023) {
+        sendSpeed("DOWN");
+        delay(200);
+      }
     }
 
     if((analogRead(eixo_X)) == 0){ //SE LEITURA FOR IGUAL A 0, FAZ
@@ -100,6 +104,7 @@ void sendSpeed(String speedDirection) {
     radio.write(&direction, sizeof(direction));
   } else if(speedDirection == "DOWN") {
     const char direction[] = "DOWN";
+    Serial.println("aqui");
     radio.write(&instruction, sizeof(instruction));
     radio.write(&direction, sizeof(direction));
   } 
