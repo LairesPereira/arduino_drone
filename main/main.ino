@@ -3,6 +3,15 @@
 #include <SPI.h>
 #include <nRF24L01.h>
 #include <RF24.h>
+#include <Kalman.h>
+
+
+float accPitch = 0;
+float accRoll = 0;
+
+float kalPitch = 0;
+float kalRoll = 0;
+
 
 RF24 radio(7, 8); // create a radio class 
 
@@ -28,13 +37,55 @@ int lastMotorTwoSpeed = 0;
 int lastMotorThreeSpeed = 0;
 int lastMotorFourSpeed = 0;
 
-
 bool motorsRunning = false;
+bool motorsAtMinimalSpeed = false;
 
-float AccX, AccY, AccZ, Temp;
+double AccX, AccY, AccZ, Temp, GyX, GyY, GyZ;
+uint32_t timer;
+
+// here we keep tracking the last time we recived instructions
+// from our controllers. 
+unsigned long previousMillis = 0; // last time update
+long interval = 300; // interval at which we call stabilization if not reciving any instructions
+
+Kalman kalmanX;
+Kalman kalmanY;
+Kalman kalmanZ;
+
+double gyroXangle;
+double gyroYangle;
+
+double kalAngleX;
+double kalAngleY;
+double kalAngleZ;
 
 void setup() {
-  Serial.begin(9600);// initialize serial motor  
+  Serial.begin(9600);// initialize serial motor 
+
+  Wire.beginTransmission(MPU);
+  Wire.write(0x3B);
+  Wire.endTransmission(false);
+  Wire.requestFrom(MPU, 14, true);
+
+  // store data
+  AccX = Wire.read() << 8 | Wire.read();
+  AccY = Wire.read() << 8 | Wire.read();
+  AccZ = Wire.read() << 8 | Wire.read();
+  Temp = Wire.read() << 8 | Wire.read();
+  GyX = Wire.read() << 8 | Wire.read();
+  GyY = Wire.read() << 8 | Wire.read();
+  GyZ = Wire.read() << 8 | Wire.read();
+
+  double pitch = atan(AccX/sqrt(AccY*AccY + AccZ*AccZ)) * RAD_TO_DEG;
+  double roll = atan(AccY/sqrt(AccX*AccX + AccZ*AccZ)) * RAD_TO_DEG; 
+
+  kalmanX.setAngle(roll);
+  kalmanY.setAngle(pitch);
+
+  gyroXangle = roll;
+  gyroYangle = pitch;
+
+  timer = micros();
 
   pinMode(motorPin1, OUTPUT);// set mtorPin as output
   pinMode(motorPin2, OUTPUT);// set mtorPin as output
@@ -54,7 +105,7 @@ void setup() {
 
   delay(1000);
 
-  setMinimalStartSpeed(); // set all speeds to minimal value 35
+  setMinimalStartSpeed(); // set all speeds to minimal value 40
 
   // radio initializer
   radio.begin();
@@ -78,14 +129,12 @@ void setup() {
 }
 
 void loop() {
-  Serial.print(lastMotorOneSpeed);
+  //Serial.println(lastMotorOneSpeed);
+  //Serial.println();
+
   
-  Serial.println();
-
-  Serial.print(lastMotorTwoSpeed);
  
-  Serial.println();
-
+  accelerometerMeassure(1);
   if(radio.available()) {
     char controllerInstruction[32] = "";
     char directionInstruction[32] = "";
@@ -94,15 +143,17 @@ void loop() {
     Serial.println(controllerInstruction);
     Serial.println(directionInstruction);    
     
-    if(strcmp(controllerInstruction, "switch_motors_power") == 0) {
-      //startStop();
+    if(strcmp(controllerInstruction, "EMERGENCY BREAK") == 0) {
+        exit(1);
     }
     
     if(strcmp(controllerInstruction, "GENERAL_SPEED") == 0) {
       if(strcmp(directionInstruction, "UP") == 0) {
+        previousMillis = millis();
         setGeneralSpeed(1,1,1,1, "UP");
         delay(200);
       } else if(strcmp(directionInstruction, "DOWN") == 0) {
+        previousMillis = millis();
         setGeneralSpeed(1,1,1,1, "DOWN");
         delay(200);
       }
@@ -110,28 +161,12 @@ void loop() {
     } else if(strcmp(controllerInstruction, "DIRECTION") == 0) {
       if(strcmp(directionInstruction, "UP") == 0){
         motorsRunning = true;
-        setMotorsSpeedUp(1,1,1,1); // increses motors speed
+        setMotorsSpeed(1,1,1,1); // increses motors speed
       }
     }
   }
-
-  //float levelX = accelerometerMeassure(0);
-  //float levelY = accelerometerMeassure(1);
-  
-  // setMotorsSpeed(levelY, motorTwoSpeed, motorThreeSpeed, motorFourSpeed);
 }
 
-//void startStop(){
-  //if(!motorsRunning) {
-    //setMotorsSpeed(10, 10, 10, 10);
-    //motorsRunning = true;
-    //delay(1000);
-  //} else {
-    //setMotorsSpeed(0, 0, 0, 0);
-    //motorsRunning = false;
-    //delay(1000);
- // }
-//}
 
 void setGeneralSpeed(int motorOne, int motorTwo, int motorThree, int motorFour, String direction) {
     if(direction == "UP") {
@@ -163,7 +198,7 @@ void setGeneralSpeed(int motorOne, int motorTwo, int motorThree, int motorFour, 
     }
 }
 
-void setMotorsSpeedUp(float motorOne, int motorTwo, int motorThree, int motorFour) {
+void setMotorsSpeed(float motorOne, int motorTwo, int motorThree, int motorFour) {
     // CREATE METHOD FOR SLOWLY INCREASES SPEED FOR AVOID BUMPS
     esc1.write(motorOne); //using val as the signal to esc1
     esc2.write(motorOne);
@@ -183,12 +218,6 @@ void setMinimalStartSpeed() {
   lastMotorFourSpeed = 40;
 }
 
-void startMotors(int motorOne, int motorTwo, int motorThree, int motorFour) {
-    // Serial.println(mSpeed); // print mSpeed value on Serial monitor (click on Tools->Serial Monitor)
-    // starts always at low speed
-    esc1.write(motorOne); 
-}
-
 
 float accelerometerMeassure(int axis) {
   // axis X = 0 
@@ -204,24 +233,35 @@ float accelerometerMeassure(int axis) {
   AccY = Wire.read() << 8 | Wire.read();
   AccZ = Wire.read() << 8 | Wire.read();
   Temp = Wire.read() << 8 | Wire.read();
+  GyX = Wire.read() << 8 | Wire.read();
+  GyY = Wire.read() << 8 | Wire.read();
+  GyZ = Wire.read() << 8 | Wire.read();
 
+  double dt = (double)(micros() - timer) / 1000000;
+  timer = micros();
 
-  // visualize accerleration
-
-  // Serial.print(AccX / 2048);
-  // Serial.print(" ");
-  // Serial.print(AccY / 2048);
-  // Serial.print(" ");
-  // Serial.print(AccZ / 2048);
-  // Serial.print(" ");
-
-  // convert data to angle
-  double pitch = atan(AccX/AccZ);
-  double roll = atan(AccY/AccZ);
   
+  double pitch = atan(AccX/sqrt(AccY*AccY + AccZ*AccZ)) * RAD_TO_DEG;
+  double roll = atan(AccY/sqrt(AccX*AccX + AccZ*AccZ)) * RAD_TO_DEG; 
+
+  gyroXangle = GyX / 131.0;
+  gyroYangle = GyY / 131.0;
+
+  kalAngleX = kalmanX.getAngle(roll, gyroXangle, dt);
+  kalAngleY = kalmanY.getAngle(pitch, gyroYangle, dt);
+
   //Serial.print(pitch);
   //Serial.print(" ");
-  //Serial.println(roll);
+  //Serial.print(roll);
+  Serial.print(" ");
+  Serial.println(kalAngleX);
+  //Serial.print(" ");
+  //Serial.println(kalAngleY);
+
+
+  // reduce 9 and 10 motors speed
+  setAngleCorrection(kalAngleX);
+  
   
   if(axis == 0) {
     return pitch;
@@ -230,3 +270,83 @@ float accelerometerMeassure(int axis) {
   }
   
 }
+
+void setAngleCorrection(float kalAngleX) {
+  if(kalAngleX >= -2 && kalAngleX < 0) {
+    unsigned long currentMillis = millis();
+    if(currentMillis - previousMillis > interval) {
+      previousMillis = currentMillis;  
+        Serial.println("foiiiii");
+        stabilize();
+
+      // do something
+    }
+  }
+  if (
+      kalAngleX > 5 &&
+      lastMotorOneSpeed <= 169 &&
+      lastMotorTwoSpeed <= 169 &&
+      lastMotorThreeSpeed <= 169 &&
+      lastMotorFourSpeed <= 169
+     ) {
+      esc1.write(lastMotorOneSpeed + 1);
+      esc2.write(lastMotorTwoSpeed + 1);
+      esc3.write(lastMotorThreeSpeed + 1);
+      esc4.write(lastMotorFourSpeed + 1);
+
+      lastMotorOneSpeed++;
+      lastMotorTwoSpeed++;
+      lastMotorThreeSpeed++;
+      lastMotorFourSpeed++;
+      
+      motorsAtMinimalSpeed = false;
+      
+      delay(50);
+  }
+}
+
+void stabilize() {
+      // set all motors to minimal flight speed
+      //while(
+        //lastMotorOneSpeed > 40 ||
+        //lastMotorTwoSpeed > 40 ||
+        //lastMotorThreeSpeed > 40 ||
+        //lastMotorFourSpeed > 40 
+      //) {
+        
+     //   if(lastMotorOneSpeed > 40) {
+         // lastMotorOneSpeed--;
+       // } 
+       // if(lastMotorTwoSpeed > 40) {
+       //   lastMotorOneSpeed--;
+       // }
+       // if(lastMotorThreeSpeed > 40) {
+       //   lastMotorThreeSpeed--;
+       // }
+       // if(lastMotorFourSpeed > 40) {
+        //  lastMotorFourSpeed--;
+       // }
+        
+        esc1.write(40);
+        esc2.write(40);
+        esc3.write(40);
+        esc4.write(40);
+
+        lastMotorOneSpeed = 40;
+        lastMotorTwoSpeed = 40;
+        lastMotorThreeSpeed = 40;
+        lastMotorFourSpeed = 40;     
+}
+
+class Motor : public Servo {
+
+  public:
+    void attachMotorPins(int pin) {
+      
+    }
+
+  private: 
+    int motorPinAtArduino;
+    int motorSpeed;
+
+};

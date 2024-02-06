@@ -35,14 +35,16 @@ int speedUpBtnLastState = 0;
 int eixo_X_speed = A3; //PINO REFERENTE A LIGAÇÃO DO EIXO X DO PINO DE VELOCIDADE GERAL DOS MOTORES
 int eixo_X= A1; //PINO REFERENTE A LIGAÇÃO DO EIXO X
 int eixo_Y = A2; //PINO REFERENTE A LIGAÇÃO DO EIXO Y
+int switchJoystick = 2;
 
 RF24 radio(7, 8);
 
 void setup() {
   Serial.begin(9600);
-  pinMode(potentiometer, INPUT); //Sets the pinmode to input
+  pinMode(potentiometer, INPUT); 
   pinMode(startButton, INPUT);
   pinMode(speedUpBtn, INPUT);
+  pinMode(switchJoystick, INPUT_PULLUP);
   radio.begin();
   radio.openWritingPipe(address);
   radio.setPALevel(RF24_PA_MIN);
@@ -57,6 +59,9 @@ void loop() {
 }
 
 void readJoystick() {
+    if((digitalRead(switchJoystick)) == 0) {
+      sendEmergencyBreak();
+    }
     if(analogRead(eixo_X_speed) == 0) {
       while(analogRead(eixo_X_speed) == 0) {
         sendSpeed("UP");
@@ -108,6 +113,12 @@ void sendSpeed(String speedDirection) {
     radio.write(&instruction, sizeof(instruction));
     radio.write(&direction, sizeof(direction));
   } 
+}
+
+void sendEmergencyBreak() {
+    const char instruction[] = "EMERGENCY BREAK";
+    radio.write(&instruction, sizeof(instruction));
+    Serial.println("EMERGENCY BREAK");
 }
 
 void sendDirection(String joystickInstruction) {
