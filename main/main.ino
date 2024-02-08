@@ -92,20 +92,15 @@ void setup() {
   pinMode(motorPin3, OUTPUT);// set mtorPin as output
   pinMode(motorPin4, OUTPUT);// set mtorPin as output
 
-  esc1.attach(motorPin1); //Specify the esc1 signal pin
-  esc2.attach(motorPin2); //Specify the esc1 signal pin
-  esc3.attach(motorPin3); //Specify the esc1 signal pin
-  esc4.attach(motorPin4); //Specify the esc1 signal pin
+  esc1.attach(motorPin1, 1000, 2000); //Specify the esc1 signal pin
+  esc2.attach(motorPin2, 1000, 2000); //Specify the esc1 signal pin
+  esc3.attach(motorPin3, 1000, 2000); //Specify the esc1 signal pin
+  esc4.attach(motorPin4, 1000, 2000); //Specify the esc1 signal pin
 
   // set all motors speed to zero
-  esc1.write(0);
-  esc2.write(0);
-  esc3.write(0);
-  esc4.write(0);
+  
 
-  delay(1000);
-
-  setMinimalStartSpeed(); // set all speeds to minimal value 40
+  //setMinimalStartSpeed(); // set all speeds to minimal value 40
 
   // radio initializer
   radio.begin();
@@ -131,9 +126,6 @@ void setup() {
 void loop() {
   //Serial.println(lastMotorOneSpeed);
   //Serial.println();
-
-  
- 
   accelerometerMeassure(1);
   if(radio.available()) {
     char controllerInstruction[32] = "";
@@ -200,10 +192,15 @@ void setGeneralSpeed(int motorOne, int motorTwo, int motorThree, int motorFour, 
 
 void setMotorsSpeed(float motorOne, int motorTwo, int motorThree, int motorFour) {
     // CREATE METHOD FOR SLOWLY INCREASES SPEED FOR AVOID BUMPS
-    esc1.write(motorOne); //using val as the signal to esc1
-    esc2.write(motorOne);
-    esc3.write(motorOne);
-    esc4.write(motorOne);
+    esc1.writeMicroseconds(motorOne);
+    esc2.writeMicroseconds(motorTwo);
+    esc3.writeMicroseconds(motorThree);
+    esc4.writeMicroseconds(motorFour);
+
+    //esc1.write(motorOne); //using val as the signal to esc1
+    //esc2.write(motorOne);
+    //esc3.write(motorOne);
+    //esc4.write(motorOne);
 }
 
 void setMinimalStartSpeed() {
@@ -249,18 +246,33 @@ float accelerometerMeassure(int axis) {
 
   kalAngleX = kalmanX.getAngle(roll, gyroXangle, dt);
   kalAngleY = kalmanY.getAngle(pitch, gyroYangle, dt);
-
+  
   //Serial.print(pitch);
   //Serial.print(" ");
   //Serial.print(roll);
-  Serial.print(" ");
-  Serial.println(kalAngleX);
+  Serial.print(" | kalAngle X: ");
+  //Serial.print(20);
   //Serial.print(" ");
-  //Serial.println(kalAngleY);
+  Serial.print(kalAngleX);
+  Serial.print(" | kalAngle Y: ");
+  //Serial.print(" ");
+  Serial.print(kalAngleY);
 
 
-  // reduce 9 and 10 motors speed
-  setAngleCorrection(kalAngleX);
+  
+  //setAngleCorrection(kalAngleX);
+  double PIDX1 = Compute(kalAngleX);
+ // double PIDX2 = Compute(kalAngleX * -1);
+
+  double speedX1 = map(PIDX1, 1000, 2000, 1400, 2000);
+  //double speedX2 = map(PIDX2, 1000, 2000, 1400, 2000);
+
+  Serial.print(" | speed X1: ");
+  Serial.println(PIDX1);
+  //Serial.print(" | speed X2: ");
+  //Serial.println(PIDX2);  
+  setMotorsSpeed(speedX1, speedX1, speedX1, speedX1);
+
   
   
   if(axis == 0) {
@@ -272,36 +284,28 @@ float accelerometerMeassure(int axis) {
 }
 
 void setAngleCorrection(float kalAngleX) {
+  // stabilize motors speed only when reach correct level and 
+  // not recived any controller instruction for the last 300 milliseconds
   if(kalAngleX >= -2 && kalAngleX < 0) {
     unsigned long currentMillis = millis();
     if(currentMillis - previousMillis > interval) {
       previousMillis = currentMillis;  
-        Serial.println("foiiiii");
         stabilize();
-
-      // do something
     }
   }
   if (
-      kalAngleX > 5 &&
+      kalAngleX < -2.5 && 
       lastMotorOneSpeed <= 169 &&
       lastMotorTwoSpeed <= 169 &&
       lastMotorThreeSpeed <= 169 &&
       lastMotorFourSpeed <= 169
      ) {
-      esc1.write(lastMotorOneSpeed + 1);
-      esc2.write(lastMotorTwoSpeed + 1);
       esc3.write(lastMotorThreeSpeed + 1);
       esc4.write(lastMotorFourSpeed + 1);
-
-      lastMotorOneSpeed++;
-      lastMotorTwoSpeed++;
       lastMotorThreeSpeed++;
       lastMotorFourSpeed++;
       
-      motorsAtMinimalSpeed = false;
-      
-      delay(50);
+      delay(30);
   }
 }
 
@@ -327,10 +331,7 @@ void stabilize() {
         //  lastMotorFourSpeed--;
        // }
         
-        esc1.write(40);
-        esc2.write(40);
-        esc3.write(40);
-        esc4.write(40);
+   
 
         lastMotorOneSpeed = 40;
         lastMotorTwoSpeed = 40;
