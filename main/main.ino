@@ -27,9 +27,9 @@ float pid_i=0;
 float pid_d=0;
 
 /////////////////PID CONSTANTS/////////////////
-double kp=0.15;//3.55
-double ki=0.0013;//0.003
-double kd=0.4;//2.05
+double kp=0.11;//3.55
+double ki=0.0011;//0.003
+double kd=0.3;//2.05
 
 // BOM RESULTADO
 //double kp=8.9;//3.55
@@ -37,7 +37,7 @@ double kd=0.4;//2.05
 //double kd=1.2;//2.05
 ///////////////////////////////////////////////
 
-double throttle=1400; //initial value of throttle to the motors
+double throttle=1500; //initial value of throttle to the motors
 float desired_angle = 0; //This is the angle in which we whant the
                          //balance to stay steady
 
@@ -143,7 +143,6 @@ void loop() {
   readAngle();
   pidCalc();
   correctionSpeed();
-  Serial.println(throttle);
   
   if(radio.available()) {
     char controllerInstruction[32] = "";
@@ -159,7 +158,7 @@ void loop() {
     
     if(strcmp(controllerInstruction, "GENERAL_SPEED") == 0) {
       if(strcmp(directionInstruction, "UP") == 0) {
-        previousMillis = millis();
+        //previousMillis = millis();
         throttle += 10;
         
       } else if(strcmp(directionInstruction, "DOWN") == 0) {
@@ -368,6 +367,8 @@ if(pwmLeft > 2000)
 width for each pulse*/
 
 //Serial.print(PID);
+Serial.print(" ");
+Serial.print(throttle);
 Serial.print(" ");
 Serial.print(pwmLeft);
 Serial.print(" ");
