@@ -5,13 +5,41 @@
 #include <RF24.h>
 #include <Kalman.h>
 
+Servo right_prop;
+Servo left_prop;
 
-float accPitch = 0;
-float accRoll = 0;
+/*MPU-6050 gives you 16 bits data so you have to create some 16int constants
+ * to store the data for accelerations and gyro*/
 
-float kalPitch = 0;
-float kalRoll = 0;
+int16_t Acc_rawX, Acc_rawY, Acc_rawZ,Gyr_rawX, Gyr_rawY, Gyr_rawZ;
+ 
+float Acceleration_angle[2];
+float Gyro_angle[2];
+float Total_angle[2];
 
+float elapsedTime, time, timePrev;
+float rad_to_deg = 180/3.141592654;
+
+float PID, pwmLeft, pwmRight, error, previous_error;
+
+float pid_p=0;
+float pid_i=0;
+float pid_d=0;
+
+/////////////////PID CONSTANTS/////////////////
+double kp=0.11;//3.55
+double ki=0.0011;//0.003
+double kd=0.3;//2.05
+
+// BOM RESULTADO
+//double kp=8.9;//3.55
+//double ki=0.00095;//0.003
+//double kd=1.2;//2.05
+///////////////////////////////////////////////
+
+double throttle=1500; //initial value of throttle to the motors
+float desired_angle = 20; //This is the angle in which we whant the
+                         //balance to stay steady
 
 RF24 radio(7, 8); // create a radio class 
 
@@ -24,29 +52,12 @@ const byte address[6] = "00001";
 
 const int MPU = 0x68; // accelerometer address 
 
-// motors config
-// motors power pins
-int motorPin1 = 5;  // pin to connect to motor module
-int motorPin2 = 6;  // pin to connect to motor module
-int motorPin3 = 9;  // pin to connect to motor module
-int motorPin4 = 10;  // pin to connect to motor module
-
-// save last speed value
-int lastMotorOneSpeed = 0;
-int lastMotorTwoSpeed = 0;
-int lastMotorThreeSpeed = 0;
-int lastMotorFourSpeed = 0;
-
 bool motorsRunning = false;
 bool motorsAtMinimalSpeed = false;
+bool firstStart = true;
 
 double AccX, AccY, AccZ, Temp, GyX, GyY, GyZ;
 uint32_t timer;
-
-// here we keep tracking the last time we recived instructions
-// from our controllers. 
-unsigned long previousMillis = 0; // last time update
-long interval = 300; // interval at which we call stabilization if not reciving any instructions
 
 Kalman kalmanX;
 Kalman kalmanY;
@@ -60,60 +71,36 @@ double kalAngleY;
 double kalAngleZ;
 
 void setup() {
-  Serial.begin(9600);// initialize serial motor 
+  Serial.begin(250000);
 
   Wire.beginTransmission(MPU);
   Wire.write(0x3B);
   Wire.endTransmission(false);
   Wire.requestFrom(MPU, 14, true);
 
-  // store data
-  AccX = Wire.read() << 8 | Wire.read();
-  AccY = Wire.read() << 8 | Wire.read();
-  AccZ = Wire.read() << 8 | Wire.read();
-  Temp = Wire.read() << 8 | Wire.read();
-  GyX = Wire.read() << 8 | Wire.read();
-  GyY = Wire.read() << 8 | Wire.read();
-  GyZ = Wire.read() << 8 | Wire.read();
+  right_prop.attach(6); //attatch the right motor to pin 3
+  left_prop.attach(5);  //attatch the left motor to pin 5
 
-  double pitch = atan(AccX/sqrt(AccY*AccY + AccZ*AccZ)) * RAD_TO_DEG;
-  double roll = atan(AccY/sqrt(AccX*AccX + AccZ*AccZ)) * RAD_TO_DEG; 
-
-  kalmanX.setAngle(roll);
-  kalmanY.setAngle(pitch);
-
-  gyroXangle = roll;
-  gyroYangle = pitch;
-
-  timer = micros();
-
-  pinMode(motorPin1, OUTPUT);// set mtorPin as output
-  pinMode(motorPin2, OUTPUT);// set mtorPin as output
-  pinMode(motorPin3, OUTPUT);// set mtorPin as output
-  pinMode(motorPin4, OUTPUT);// set mtorPin as output
-
-  esc1.attach(motorPin1); //Specify the esc1 signal pin
-  esc2.attach(motorPin2); //Specify the esc1 signal pin
-  esc3.attach(motorPin3); //Specify the esc1 signal pin
-  esc4.attach(motorPin4); //Specify the esc1 signal pin
-
-  // set all motors speed to zero
-  esc1.write(0);
-  esc2.write(0);
-  esc3.write(0);
-  esc4.write(0);
-
-  delay(1000);
-
-  setMinimalStartSpeed(); // set all speeds to minimal value 40
-
+  time = millis(); //Start counting time in milliseconds
+  /*In order to start up the ESCs we have to send a min value
+   * of PWM to them before connecting the battery. Otherwise
+   * the ESCs won't start up or enter in the configure mode.
+   * The min value is 1000us and max is 2000us, REMEMBER!*/
+  
+  left_prop.writeMicroseconds(2000);
+  right_prop.writeMicroseconds(2000);
+  Serial.println("\n");
+  Serial.println("CONNECT BATTERY");
+  delay(200); /*Give some delay, 7s, to have time to connect
+                *the propellers and let everything start up*/ 
+  left_prop.writeMicroseconds(1000);
+  right_prop.writeMicroseconds(1000);
+ 
   // radio initializer
   radio.begin();
   radio.openReadingPipe(0, address);
   radio.setPALevel(RF24_PA_MIN);
   radio.startListening();
-
-  // config accelerometer
 
   // initialize sensor
   Wire.begin();
@@ -129,224 +116,10 @@ void setup() {
 }
 
 void loop() {
-  //Serial.println(lastMotorOneSpeed);
-  //Serial.println();
-
-  
- 
-  accelerometerMeassure(1);
-  if(radio.available()) {
-    char controllerInstruction[32] = "";
-    char directionInstruction[32] = "";
-    radio.read(&controllerInstruction, sizeof(controllerInstruction));
-    radio.read(&directionInstruction, sizeof(directionInstruction));
-    Serial.println(controllerInstruction);
-    Serial.println(directionInstruction);    
-    
-    if(strcmp(controllerInstruction, "EMERGENCY BREAK") == 0) {
-        exit(1);
-    }
-    
-    if(strcmp(controllerInstruction, "GENERAL_SPEED") == 0) {
-      if(strcmp(directionInstruction, "UP") == 0) {
-        previousMillis = millis();
-        setGeneralSpeed(1,1,1,1, "UP");
-        delay(200);
-      } else if(strcmp(directionInstruction, "DOWN") == 0) {
-        previousMillis = millis();
-        setGeneralSpeed(1,1,1,1, "DOWN");
-        delay(200);
-      }
-
-    } else if(strcmp(controllerInstruction, "DIRECTION") == 0) {
-      if(strcmp(directionInstruction, "UP") == 0){
-        motorsRunning = true;
-        setMotorsSpeed(1,1,1,1); // increses motors speed
-      }
-    }
-  }
+  readAngle();
+  pidCalc();
+  correctionSpeed();
+  radioInstructions();
 }
 
 
-void setGeneralSpeed(int motorOne, int motorTwo, int motorThree, int motorFour, String direction) {
-    if(direction == "UP") {
-      esc1.write(lastMotorOneSpeed + motorOne);
-      esc2.write(lastMotorTwoSpeed + motorTwo);
-      esc3.write(lastMotorThreeSpeed + motorThree);
-      esc4.write(lastMotorFourSpeed + motorFour);
-
-      lastMotorOneSpeed = lastMotorOneSpeed + motorOne;
-      lastMotorTwoSpeed = lastMotorTwoSpeed + motorTwo;
-      lastMotorThreeSpeed = lastMotorThreeSpeed + motorThree;
-      lastMotorFourSpeed = lastMotorFourSpeed + motorFour;
-
-    } else if(direction == "DOWN" &&
-              lastMotorOneSpeed > 0 &&
-              lastMotorTwoSpeed > 0 &&
-              lastMotorThreeSpeed > 0 &&
-              lastMotorFourSpeed > 0
-    ) {
-      esc1.write(lastMotorOneSpeed - motorOne);
-      esc2.write(lastMotorTwoSpeed - motorTwo);
-      esc3.write(lastMotorThreeSpeed - motorThree);
-      esc4.write(lastMotorFourSpeed - motorFour);
-
-      lastMotorOneSpeed = lastMotorOneSpeed - motorOne;
-      lastMotorTwoSpeed = lastMotorTwoSpeed - motorTwo;
-      lastMotorThreeSpeed = lastMotorThreeSpeed - motorThree;
-      lastMotorFourSpeed = lastMotorFourSpeed - motorFour;
-    }
-}
-
-void setMotorsSpeed(float motorOne, int motorTwo, int motorThree, int motorFour) {
-    // CREATE METHOD FOR SLOWLY INCREASES SPEED FOR AVOID BUMPS
-    esc1.write(motorOne); //using val as the signal to esc1
-    esc2.write(motorOne);
-    esc3.write(motorOne);
-    esc4.write(motorOne);
-}
-
-void setMinimalStartSpeed() {
-  esc1.write(40);
-  esc2.write(40);
-  esc3.write(40);
-  esc4.write(40);
-
-  lastMotorOneSpeed = 40;
-  lastMotorTwoSpeed = 40;
-  lastMotorThreeSpeed = 40;
-  lastMotorFourSpeed = 40;
-}
-
-
-float accelerometerMeassure(int axis) {
-  // axis X = 0 
-  // axis Y = 1
-
-  Wire.beginTransmission(MPU);
-  Wire.write(0x3B);
-  Wire.endTransmission(false);
-  Wire.requestFrom(MPU, 14, true);
-
-  // store data
-  AccX = Wire.read() << 8 | Wire.read();
-  AccY = Wire.read() << 8 | Wire.read();
-  AccZ = Wire.read() << 8 | Wire.read();
-  Temp = Wire.read() << 8 | Wire.read();
-  GyX = Wire.read() << 8 | Wire.read();
-  GyY = Wire.read() << 8 | Wire.read();
-  GyZ = Wire.read() << 8 | Wire.read();
-
-  double dt = (double)(micros() - timer) / 1000000;
-  timer = micros();
-
-  
-  double pitch = atan(AccX/sqrt(AccY*AccY + AccZ*AccZ)) * RAD_TO_DEG;
-  double roll = atan(AccY/sqrt(AccX*AccX + AccZ*AccZ)) * RAD_TO_DEG; 
-
-  gyroXangle = GyX / 131.0;
-  gyroYangle = GyY / 131.0;
-
-  kalAngleX = kalmanX.getAngle(roll, gyroXangle, dt);
-  kalAngleY = kalmanY.getAngle(pitch, gyroYangle, dt);
-
-  //Serial.print(pitch);
-  //Serial.print(" ");
-  //Serial.print(roll);
-  Serial.print(" ");
-  Serial.println(kalAngleX);
-  //Serial.print(" ");
-  //Serial.println(kalAngleY);
-
-
-  // reduce 9 and 10 motors speed
-  setAngleCorrection(kalAngleX);
-  
-  
-  if(axis == 0) {
-    return pitch;
-  } else if(axis == 1) {
-    return roll;
-  }
-  
-}
-
-void setAngleCorrection(float kalAngleX) {
-  if(kalAngleX >= -2 && kalAngleX < 0) {
-    unsigned long currentMillis = millis();
-    if(currentMillis - previousMillis > interval) {
-      previousMillis = currentMillis;  
-        Serial.println("foiiiii");
-        stabilize();
-
-      // do something
-    }
-  }
-  if (
-      kalAngleX > 5 &&
-      lastMotorOneSpeed <= 169 &&
-      lastMotorTwoSpeed <= 169 &&
-      lastMotorThreeSpeed <= 169 &&
-      lastMotorFourSpeed <= 169
-     ) {
-      esc1.write(lastMotorOneSpeed + 1);
-      esc2.write(lastMotorTwoSpeed + 1);
-      esc3.write(lastMotorThreeSpeed + 1);
-      esc4.write(lastMotorFourSpeed + 1);
-
-      lastMotorOneSpeed++;
-      lastMotorTwoSpeed++;
-      lastMotorThreeSpeed++;
-      lastMotorFourSpeed++;
-      
-      motorsAtMinimalSpeed = false;
-      
-      delay(50);
-  }
-}
-
-void stabilize() {
-      // set all motors to minimal flight speed
-      //while(
-        //lastMotorOneSpeed > 40 ||
-        //lastMotorTwoSpeed > 40 ||
-        //lastMotorThreeSpeed > 40 ||
-        //lastMotorFourSpeed > 40 
-      //) {
-        
-     //   if(lastMotorOneSpeed > 40) {
-         // lastMotorOneSpeed--;
-       // } 
-       // if(lastMotorTwoSpeed > 40) {
-       //   lastMotorOneSpeed--;
-       // }
-       // if(lastMotorThreeSpeed > 40) {
-       //   lastMotorThreeSpeed--;
-       // }
-       // if(lastMotorFourSpeed > 40) {
-        //  lastMotorFourSpeed--;
-       // }
-        
-        esc1.write(40);
-        esc2.write(40);
-        esc3.write(40);
-        esc4.write(40);
-
-        lastMotorOneSpeed = 40;
-        lastMotorTwoSpeed = 40;
-        lastMotorThreeSpeed = 40;
-        lastMotorFourSpeed = 40;     
-}
-
-class Motor : public Servo {
-
-  public:
-    void attachMotorPins(int pin) {
-      
-    }
-
-  private: 
-    int motorPinAtArduino;
-    int motorSpeed;
-
-};
