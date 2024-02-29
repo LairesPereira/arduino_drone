@@ -9,9 +9,8 @@ void radioInstructions() {
       
       if(strcmp(controllerInstruction, "EMERGENCY BREAK") == 0) {
           exit(1);
-      }
-      
-      if(strcmp(controllerInstruction, "GENERAL_SPEED") == 0) {
+      } else if(strcmp(controllerInstruction, "GENERAL_SPEED") == 0) {
+        
         if(strcmp(directionInstruction, "UP") == 0) {
           throttle += 10;
           
@@ -20,9 +19,11 @@ void radioInstructions() {
         }
 
       } else if(strcmp(controllerInstruction, "DIRECTION") == 0) {
-        if(strcmp(directionInstruction, "UP") == 0){
-          motorsRunning = true;
+            if(strcmp(directionInstruction, "RIGHT") == 0 && desired_angle > -20) {
+              desired_angle -= 1;
+            } else if(strcmp(directionInstruction, "LEFT") == 0 && desired_angle < 20) {
+              desired_angle += 1;
+            }
         }
-      }
     }
 }

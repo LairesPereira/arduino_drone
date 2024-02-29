@@ -1,15 +1,5 @@
-void readAngle() {
-  /////////////////////////////I M U/////////////////////////////////////
-    timePrev = time;  // the previous time is stored before the actual time read
-    time = millis();  // actual time read
-    elapsedTime = (time - timePrev) / 1000; 
-  
-  /*The tiemStep is the time that elapsed since the previous loop. 
-   * This is the value that we will use in the formulas as "elapsedTime" 
-   * in seconds. We work in ms so we haveto divide the value by 1000 
-   to obtain seconds*/
-
-  /*Reed the values that the accelerometre gives.
+void test() {
+     /*Reed the values that the accelerometre gives.
    * We know that the slave adress for this IMU is 0x68 in
    * hexadecimal. For that in the RequestFrom and the 
    * begin functions we have to put this value.*/
@@ -29,12 +19,6 @@ void readAngle() {
      Acc_rawX=Wire.read()<<8|Wire.read(); //each value needs two registres
      Acc_rawY=Wire.read()<<8|Wire.read();
      Acc_rawZ=Wire.read()<<8|Wire.read();
-     //Serial.print(" TESTE ");
-     //Serial.print(Acc_rawX);
-     //Serial.print(" ");
-     //Serial.print(Acc_rawY);
-     //Serial.print(" ");
-     //Serial.print(Acc_rawZ);
 
  
     /*///This is the part where you need to calculate the angles using Euler equations///*/
@@ -54,12 +38,6 @@ void readAngle() {
      Acceleration_angle[0] = atan((Acc_rawY/16384.0)/sqrt(pow((Acc_rawX/16384.0),2) + pow((Acc_rawZ/16384.0),2)))*rad_to_deg;
      /*---Y---*/
      Acceleration_angle[1] = atan(-1*(Acc_rawX/16384.0)/sqrt(pow((Acc_rawY/16384.0),2) + pow((Acc_rawZ/16384.0),2)))*rad_to_deg;
-
-     //Serial.print(" ");
-     //Serial.print(Acceleration_angle[0]);
-     //Serial.print(" ");
-     //Serial.println(Acceleration_angle[1]);
-
  
    /*Now we read the Gyro data in the same way as the Acc data. The adress for the
     * gyro data starts at 0x43. We can see this adresses if we look at the register map
@@ -90,13 +68,16 @@ void readAngle() {
    /*---X axis angle---*/
    Total_angle[0] = 0.98 *(Total_angle[0] + Gyro_angle[0]*elapsedTime) + 0.02*Acceleration_angle[0];
    /*---Y axis angle---*/
-   //Total_angle[1] = 0.98 *(Total_angle[1] + Gyro_angle[1]*elapsedTime) + 0.02*Acceleration_angle[1];
-   //int teste = accelerometerMeassure(1);  
-   Total_angle[1] = (float)accelerometerMeassure(1); 
+   Total_angle[1] = 0.98 *(Total_angle[1] + Gyro_angle[1]*elapsedTime) + 0.02*Acceleration_angle[1];
+   
    /*Now we have our angles in degree and values from -10º0 to 100º aprox*/
-   Serial.print(Total_angle[1]);
-   //Serial.print(" ");
-   //Serial.print(teste);
-   Serial.print(" ");
+   Serial.println(Total_angle[1]);
+
+
+   if(Total_angle[1] > 90 || Total_angle[1] < -90) {
+    Serial.println("Emergency break due to high angle values!");
+    exit(1);
+   }
+ 
 
 }

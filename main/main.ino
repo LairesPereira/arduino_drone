@@ -5,8 +5,8 @@
 #include <RF24.h>
 #include <Kalman.h>
 
-Servo right_prop;
-Servo left_prop;
+Servo front_right_prop;
+Servo front_left_prop;
 
 /*MPU-6050 gives you 16 bits data so you have to create some 16int constants
  * to store the data for accelerations and gyro*/
@@ -27,9 +27,9 @@ float pid_i=0;
 float pid_d=0;
 
 /////////////////PID CONSTANTS/////////////////
-double kp=0.11;//3.55
-double ki=0.0011;//0.003
-double kd=0.3;//2.05
+double kp=0.2;//3.55
+double ki=0.002;//0.003
+double kd=0.4;//2.05
 
 // BOM RESULTADO
 //double kp=8.9;//3.55
@@ -37,8 +37,8 @@ double kd=0.3;//2.05
 //double kd=1.2;//2.05
 ///////////////////////////////////////////////
 
-double throttle=1500; //initial value of throttle to the motors
-float desired_angle = 20; //This is the angle in which we whant the
+double throttle=1300; //initial value of throttle to the motors
+float desired_angle = 0; //This is the angle in which we whant the
                          //balance to stay steady
 
 RF24 radio(7, 8); // create a radio class 
@@ -65,7 +65,6 @@ Kalman kalmanZ;
 
 double gyroXangle;
 double gyroYangle;
-
 double kalAngleX;
 double kalAngleY;
 double kalAngleZ;
@@ -78,8 +77,8 @@ void setup() {
   Wire.endTransmission(false);
   Wire.requestFrom(MPU, 14, true);
 
-  right_prop.attach(6); //attatch the right motor to pin 3
-  left_prop.attach(5);  //attatch the left motor to pin 5
+  front_left_prop.attach(5);  //attatch the left motor to pin 5
+  front_right_prop.attach(6); //attatch the right motor to pin 6
 
   time = millis(); //Start counting time in milliseconds
   /*In order to start up the ESCs we have to send a min value
@@ -87,14 +86,14 @@ void setup() {
    * the ESCs won't start up or enter in the configure mode.
    * The min value is 1000us and max is 2000us, REMEMBER!*/
   
-  left_prop.writeMicroseconds(2000);
-  right_prop.writeMicroseconds(2000);
+  front_left_prop.writeMicroseconds(2000);
+  front_right_prop.writeMicroseconds(2000);
   Serial.println("\n");
   Serial.println("CONNECT BATTERY");
   delay(200); /*Give some delay, 7s, to have time to connect
                 *the propellers and let everything start up*/ 
-  left_prop.writeMicroseconds(1000);
-  right_prop.writeMicroseconds(1000);
+  front_left_prop.writeMicroseconds(1000);
+  front_right_prop.writeMicroseconds(1000);
  
   // radio initializer
   radio.begin();
@@ -116,10 +115,9 @@ void setup() {
 }
 
 void loop() {
-  readAngle();
-  pidCalc();
-  correctionSpeed();
   radioInstructions();
+  pid();
+  printValues();
 }
 
 
