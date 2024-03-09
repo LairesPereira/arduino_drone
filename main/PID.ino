@@ -1,182 +1,213 @@
 void pid() {
-
-/////////////////////////////I M U/////////////////////////////////////
-    timePrev = time;  // the previous time is stored before the actual time read
-    time = millis();  // actual time read
-    elapsedTime = (time - timePrev) / 1000; 
-  
+   
+  /////////////////////////////I M U/////////////////////////////////////
+  timePrev = time;  // the previous time is stored before the actual time read
+  time = millis();  // actual time read
+  elapsedTime = (time - timePrev) / 1000;     
   /*The tiemStep is the time that elapsed since the previous loop. 
-   * This is the value that we will use in the formulas as "elapsedTime" 
-   * in seconds. We work in ms so we haveto divide the value by 1000 
-   to obtain seconds*/
+  *This is the value that we will use in the formulas as "elapsedTime" 
+  *in seconds. We work in ms so we have to divide the value by 1000 
+  to obtain seconds*/
+  /*Reed the values that the accelerometre gives.
+  * We know that the slave adress for this IMU is 0x68 in
+  * hexadecimal. For that in the RequestFrom and the 
+  * begin functions we have to put this value.*/   
+ //////////////////////////////////////Gyro read/////////////////////////////////////
+  Wire.beginTransmission(0x68);            //begin, Send the slave adress (in this case 68) 
+  Wire.write(0x43);                        //First adress of the Gyro data
+  Wire.endTransmission(false);
+  Wire.requestFrom(0x68,4,true);           //We ask for just 4 registers        
+  Gyr_rawX=Wire.read()<<8|Wire.read();     //Once again we shif and sum
+  Gyr_rawY=Wire.read()<<8|Wire.read();
+  /*Now in order to obtain the gyro data in degrees/seconds we have to divide first
+  the raw value by 32.8 because that's the value that the datasheet gives us for a 1000dps range*/
+  /*---X---*/
+  Gyr_rawX = (Gyr_rawX/32.8) - Gyro_raw_error_x; 
+  /*---Y---*/
+  Gyr_rawY = (Gyr_rawY/32.8) - Gyro_raw_error_y;  
+  /*Now we integrate the raw value in degrees per seconds in order to obtain the angle
+  * If you multiply degrees/seconds by seconds you obtain degrees */
+    /*---X---*/
+  Gyro_angle_x = Gyr_rawX*elapsedTime;
+  /*---X---*/
+  Gyro_angle_y = Gyr_rawY*elapsedTime;
 
-  readAngle();
+
+    
   
+  //////////////////////////////////////Acc read/////////////////////////////////////
+  Wire.beginTransmission(0x68);     //begin, Send the slave adress (in this case 68) 
+  Wire.write(0x3B);                 //Ask for the 0x3B register- correspond to AcX
+  Wire.endTransmission(false);      //keep the transmission and next
+  Wire.requestFrom(0x68,6,true);    //We ask for next 6 registers starting withj the 3B  
+  /*We have asked for the 0x3B register. The IMU will send a brust of register.
+  * The amount of register to read is specify in the requestFrom function.
+  * In this case we request 6 registers. Each value of acceleration is made out of
+  * two 8bits registers, low values and high values. For that we request the 6 of them  
+  * and just make then sum of each pair. For that we shift to the left the high values 
+  * register (<<) and make an or (|) operation to add the low values.
+  If we read the datasheet, for a range of+-8g, we have to divide the raw values by 4096*/    
+  Acc_rawX=(Wire.read()<<8|Wire.read())/4096.0 ; //each value needs two registres
+  Acc_rawY=(Wire.read()<<8|Wire.read())/4096.0 ;
+  Acc_rawZ=(Wire.read()<<8|Wire.read())/4096.0 ; 
+ /*Now in order to obtain the Acc angles we use euler formula with acceleration values
+ after that we substract the error value found before*/  
+ /*---X---*/
+ Acc_angle_x = (atan((Acc_rawY)/sqrt(pow((Acc_rawX),2) + pow((Acc_rawZ),2)))*rad_to_deg) - Acc_angle_error_x;
+ /*---Y---*/
+ Acc_angle_y = (atan(-1*(Acc_rawX)/sqrt(pow((Acc_rawY),2) + pow((Acc_rawZ),2)))*rad_to_deg) - Acc_angle_error_y;   
+
+
+ //////////////////////////////////////Total angle and filter/////////////////////////////////////
+ /*---X axis angle---*/
+ Total_angle_x = 0.98 *(Total_angle_x + Gyro_angle_x) + 0.02*Acc_angle_x;
+ /*---Y axis angle---*/
+ Total_angle_y = 0.98 *(Total_angle_y + Gyro_angle_y) + 0.02*Acc_angle_y;
+
+
+
+
+
+
+
 /*///////////////////////////P I D///////////////////////////////////*/
-/*Remember that for the balance we will use just one axis. I've choose the x angle
-to implement the PID with. That means that the x axis of the IMU has to be paralel to
-the balance*/
+
 
 /*First calculate the error between the desired angle and 
 *the real measured angle*/
-error = Total_angle[1] - desired_angle;
-error2 = Total_angle[0] - desired_angle;
-    
+roll_error = Total_angle_y - roll_desired_angle;
+pitch_error = Total_angle_x - pitch_desired_angle;    
 /*Next the proportional value of the PID is just a proportional constant
 *multiplied by the error*/
-
-pid_p = kp*error;
-
+roll_pid_p = roll_kp*roll_error;
+pitch_pid_p = pitch_kp*pitch_error;
 /*The integral part should only act if we are close to the
 desired position but we want to fine tune the error. That's
 why I've made a if operation for an error between -2 and 2 degree.
 To integrate we just sum the previous integral value with the
 error multiplied by  the integral constant. This will integrate (increase)
 the value each loop till we reach the 0 point*/
-if(-3 <error <3)
+if(-3 < roll_error <3)
 {
-  pid_i = pid_i+(ki*error);  
+  roll_pid_i = roll_pid_i+(roll_ki*roll_error);  
 }
-
+if(-3 < pitch_error <3)
+{
+  pitch_pid_i = pitch_pid_i+(pitch_ki*pitch_error);  
+}
 /*The last part is the derivate. The derivate acts upon the speed of the error.
 As we know the speed is the amount of error that produced in a certain amount of
 time divided by that time. For taht we will use a variable called previous_error.
 We substract that value from the actual error and divide all by the elapsed time. 
 Finnaly we multiply the result by the derivate constant*/
-
-pid_d = kd*((error - previous_error)/elapsedTime);
-
+roll_pid_d = roll_kd*((roll_error - roll_previous_error)/elapsedTime);
+pitch_pid_d = pitch_kd*((pitch_error - pitch_previous_error)/elapsedTime);
 /*The final PID values is the sum of each of this 3 parts*/
-PID = pid_p + pid_i + pid_d;
-
+roll_PID = roll_pid_p + roll_pid_i + roll_pid_d;
+pitch_PID = pitch_pid_p + pitch_pid_i + pitch_pid_d;
 /*We know taht the min value of PWM signal is 1000us and the max is 2000. So that
 tells us that the PID value can/s oscilate more than -1000 and 1000 because when we
-have a value of 2000us the maximum value taht we could sybstract is 1000 and when
-we have a value of 1000us for the PWM sihnal, the maximum value that we could add is 1000
-to reach the maximum 2000us*/
-if(PID < -1000)
-{
-  PID=-1000;
-}
-if(PID > 1000)
-{
-  PID=1000;
-}
+have a value of 2000us the maximum value taht we could substract is 1000 and when
+we have a value of 1000us for the PWM signal, the maximum value that we could add is 1000
+to reach the maximum 2000us. But we don't want to act over the entire range so -+400 should be enough*/
+
 
 /*Finnaly we calculate the PWM width. We sum the desired throttle and the PID value*/
-pwmLeft = throttle + PID;
-pwmRight = throttle - PID;
+pwm_R_F  =   input_THROTTLE - roll_PID - pitch_PID;
+pwm_R_B  =   input_THROTTLE - roll_PID + pitch_PID;
+pwm_L_B  =   input_THROTTLE + roll_PID + pitch_PID;
+pwm_L_F  =   input_THROTTLE + roll_PID - pitch_PID;
+
 
 
 /*Once again we map the PWM values to be sure that we won't pass the min
 and max values. Yes, we've already maped the PID values. But for example, for 
 throttle value of 1300, if we sum the max PID value we would have 2300us and
 that will mess up the ESC.*/
-//Right
-if(pwmRight < 1000)
+//Right front
+if(pwm_R_F < 1100)
 {
-  pwmRight= 1000;
+  pwm_R_F= 1100;
 }
-if(pwmRight > 2000)
+if(pwm_R_F > 2000)
 {
-  pwmRight=2000;
+  pwm_R_F=2000;
 }
-//Left
-if(pwmLeft < 1000)
+
+//Left front
+if(pwm_L_F < 1100)
 {
-  pwmLeft= 1000;
+  pwm_L_F= 1100;
 }
-if(pwmLeft > 2000)
+if(pwm_L_F > 2000)
 {
-  pwmLeft=2000;
+  pwm_L_F=2000;
 }
 
-/*Finnaly using the servo function we create the PWM pulses with the calculated
-width for each pulse*/
-
-front_left_prop.writeMicroseconds(pwmLeft);
-front_right_prop.writeMicroseconds(pwmRight);
-previous_error = error; //Remember to store the previous error.
+//Right back
+if(pwm_R_B < 1100)
+{
+  pwm_R_B= 1100;
+}
+if(pwm_R_B > 2000)
+{
+  pwm_R_B=2000;
 }
 
+//Left back
+if(pwm_L_B < 1100)
+{
+  pwm_L_B= 1100;
+}
+if(pwm_L_B > 2000)
+{
+  pwm_L_B=2000;
+}
+
+roll_previous_error = roll_error; //Remember to store the previous error.
+pitch_previous_error = pitch_error; //Remember to store the previous error.
 
 
-void readAngle() {
-    /*Reed the values that the accelerometre gives.
-   * We know that the slave adress for this IMU is 0x68 in
-   * hexadecimal. For that in the RequestFrom and the 
-   * begin functions we have to put this value.*/
-   
-     Wire.beginTransmission(0x68);
-     Wire.write(0x3B); //Ask for the 0x3B register- correspond to AcX
-     Wire.endTransmission(false);
-     Wire.requestFrom(0x68,6,true); 
-   
-   /*We have asked for the 0x3B register. The IMU will send a brust of register.
-    * The amount of register to read is specify in the requestFrom function.
-    * In this case we request 6 registers. Each value of acceleration is made out of
-    * two 8bits registers, low values and high values. For that we request the 6 of them  
-    * and just make then sum of each pair. For that we shift to the left the high values 
-    * register (<<) and make an or (|) operation to add the low values.*/
-    
-     Acc_rawX=Wire.read()<<8|Wire.read(); //each value needs two registres
-     Acc_rawY=Wire.read()<<8|Wire.read();
-     Acc_rawZ=Wire.read()<<8|Wire.read();
+ Serial.print(" ");
+ Serial.print(2500);
+ Serial.print(" ");
+ Serial.print(roll_PID);
+ Serial.print(" ");
+ Serial.print(pitch_PID);
+ Serial.print(" RF ");
+ Serial.print(pwm_R_F);
+ //Serial.print("   |   ");
+ Serial.print(" RB ");
+ Serial.print(pwm_R_B);
+ //Serial.print("   |   ");
+ Serial.print(" ");
+ Serial.print(pwm_L_B);
+ //Serial.print("   |   ");
+ Serial.print(" ");
+ Serial.println(pwm_L_F);
 
+/*
+ Serial.print("   |   ");
+ Serial.print("Xº: ");
+ Serial.print(Total_angle_x);
+ Serial.print("   |   ");
+ Serial.print("Yº: ");
+ Serial.print(Total_angle_y);
+ Serial.println(" ");
+*/
+
+
+
+
+
+
+
+/*now we can write the values PWM to the ESCs only if the motor is activated
+*/
+
+  L_F_prop.writeMicroseconds(pwm_L_F); 
+  L_B_prop.writeMicroseconds(pwm_L_B);
+  R_F_prop.writeMicroseconds(pwm_R_F); 
+  R_B_prop.writeMicroseconds(pwm_R_B);
  
-    /*///This is the part where you need to calculate the angles using Euler equations///*/
-    
-    /* - Now, to obtain the values of acceleration in "g" units we first have to divide the raw   
-     * values that we have just read by 16384.0 because that is the value that the MPU6050 
-     * datasheet gives us.*/
-    /* - Next we have to calculate the radian to degree value by dividing 180º by the PI number
-    * which is 3.141592654 and store this value in the rad_to_deg variable. In order to not have
-    * to calculate this value in each loop we have done that just once before the setup void.
-    */
-
-    /* Now we can apply the Euler formula. The atan will calculate the arctangent. The
-     *  pow(a,b) will elevate the a value to the b power. And finnaly sqrt function
-     *  will calculate the rooth square.*/
-     /*---X---*/
-     Acceleration_angle[0] = atan((Acc_rawY/16384.0)/sqrt(pow((Acc_rawX/16384.0),2) + pow((Acc_rawZ/16384.0),2)))*rad_to_deg;
-     /*---Y---*/
-     Acceleration_angle[1] = atan(-1*(Acc_rawX/16384.0)/sqrt(pow((Acc_rawY/16384.0),2) + pow((Acc_rawZ/16384.0),2)))*rad_to_deg;
- 
-   /*Now we read the Gyro data in the same way as the Acc data. The adress for the
-    * gyro data starts at 0x43. We can see this adresses if we look at the register map
-    * of the MPU6050. In this case we request just 4 values. W don¡t want the gyro for 
-    * the Z axis (YAW).*/
-    
-   Wire.beginTransmission(0x68);
-   Wire.write(0x43); //Gyro data first adress
-   Wire.endTransmission(false);
-   Wire.requestFrom(0x68,4,true); //Just 4 registers
-   
-   Gyr_rawX=Wire.read()<<8|Wire.read(); //Once again we shif and sum
-   Gyr_rawY=Wire.read()<<8|Wire.read();
- 
-   /*Now in order to obtain the gyro data in degrees/seconda we have to divide first
-   the raw value by 131 because that's the value that the datasheet gives us*/
-
-   /*---X---*/
-   Gyro_angle[0] = Gyr_rawX/131.0; 
-   /*---Y---*/
-   Gyro_angle[1] = Gyr_rawY/131.0;
-
-   /*Now in order to obtain degrees we have to multiply the degree/seconds
-   *value by the elapsedTime.*/
-   /*Finnaly we can apply the final filter where we add the acceleration
-   *part that afects the angles and ofcourse multiply by 0.98 */
-
-   /*---X axis angle---*/
-   Total_angle[0] = 0.98 *(Total_angle[0] + Gyro_angle[0]*elapsedTime) + 0.02*Acceleration_angle[0];
-   /*---Y axis angle---*/
-   Total_angle[1] = 0.98 *(Total_angle[1] + Gyro_angle[1]*elapsedTime) + 0.02*Acceleration_angle[1];
-   
-   /*Now we have our angles in degree and values from -10º0 to 100º aprox*/
-   Serial.print(Total_angle[0]);
-   Serial.print(Total_angle[1]);
-
-
-   
 }
